@@ -11,158 +11,111 @@ import urllib.parse
 class BandoriSpider:
     pass
 
-# to build bandori urls for each band
+def clean(string):
+    cleaned = string
+    invalid_filename_characters = ['\\', '/', ':', '*', '?', '"', '<', '>', '|']
+    for char in invalid_filename_characters:
+        if char in cleaned:
+            valid = urllib.parse.quote(char)
+            cleaned = cleaned.replace(char, valid)
+    return cleaned
+        
+# to build urls for each category
 scheme = 'https://'
 subdo = 'bandori.'
 sld = 'fandom'
-tld = '.com/'
-subdi = 'wiki/'
-band_names_url_encoded = ['Roselia', 'Poppin%27Party']
+tld = '.com'
+subdi = '/wiki/Category:'
+song_categories_url_encoded = ['Original_Songs', 'Cover_Songs', 'Extra_Songs']
 
 # build song folders for each band
-expected_song_categories = ['Original Songs', 'Cover Songs', 'Other Songs (Original)', 'Other Songs (Cover)', 'Extra Songs']
 songs_dir = 'songs'
-for band_name in band_names_url_encoded:
-    for song_category in expected_song_categories:
-        os.makedirs(os.path.join(songs_dir, band_name, song_category), exist_ok=True)
-
-# logger config
-'''
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-log_dir = 'logs'
-os.makedirs(log_dir, exist_ok=True)
-handler = logging.FileHandler(f'{os.path.join(log_dir, __name__ + datetime.datetime.today().strftime("%Y%m%d") + ".log")}')
-handler.setFormatter(formatter)
-logger = logging.getLogger(BandoriSpider.__name__)
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)
-''' 
+expected_band_names_of_category_page = ['Poppin\'Party', 'Afterglow', 'Pastel*Palettes', 'Roselia', 'Hello, Happy World!', 'Morfonica', 'RAISE A SUILEN', 'MyGO!!!!!', 'Others']
+for name in expected_band_names_of_category_page:
+    for category in song_categories_url_encoded:
+        os.makedirs(os.path.join(songs_dir, clean(name), category), exist_ok=True)
 
 class BandoriSpider(scrapy.Spider):
     name = "bandori"
-    download_links_count = 0
+    song_dl_count = 0
     songs_saved = 0
-    start_urls = [scheme + subdo + sld + tld + subdi + band_name for band_name in band_names_url_encoded]
-    invalid_filename_characters = ['\\', '/', ':', '*', '?', '"', '<', '>', '|']
+    songs_found = 0
+    start_urls = [scheme + subdo + sld + tld + subdi + category for category in song_categories_url_encoded]
 
     def parse(self, response: Response):
-        # save html file to band_pages folder
-        band_name: str = response.url.split("/")[-1] 
-        self.save_band_page(response=response, band_name=band_name)
-        # select container with all songs
-        all_songs_selector: Selector = response.xpath('//span[@id="Songs"]/parent::h2/following-sibling::div[position()=1]')
-        if len(all_songs_selector) != 1:
-            self.logger.warning(f'An error has occured while selecting all the songs of {response.url}')
-        # retrieve names of categories of songs: Original Songs, Cover Songs, Other Songs (Original), Other Songs (Cover), Extra Songs
-        song_category_names: list[str] = self.get_names_of_categories_of_songs(response=response, all_songs_selector=all_songs_selector)
-        # select group_of_songs_selectors
-        group_of_songs_selectors: Selector = self.select_groups_of_songs_by_category(response=response, all_songs_selector=all_songs_selector)
-        # starts extracting links to all songs
-        links_extracted = 0
-        for zipped in zip(song_category_names, group_of_songs_selectors, strict=True):
-            songs: list[str] = zipped[1].xpath('li/span/a/@href').getall()
-            if len(songs) > 0:
-                for song in songs:
-                    links_extracted += 1
-                    yield scrapy.Request(scheme + subdo + sld + tld.replace('/', '') + song, self.parse_song_page, cb_kwargs={'song_category': zipped[0], 'band_name': band_name})
-            else: 
-                self.logger.warning(f'Could not find any {zipped[0]} song pages for {response.url}')
-            self.logger.info(f'Extracted {len(songs)} {zipped[0]} links for {response.url}')
-        self.logger.info(f'There are {links_extracted} songs for {band_name}')
+        category = self.get_song_category_of_category_page(response=response)
+        band_names = self.get_band_names_of_category_page(response=response, category=category)
+        for band_name in band_names:
+            song_links = self.get_song_links_for_band_of_category_page(response=response, band_name=band_name, category=category)
+            for song_link in song_links:
+                url: str = scheme + subdo + sld + tld + song_link
+                cb_kwargs = {'category': category, 'band_name': band_name}
+                yield scrapy.Request(url, self.parse_song_page, cb_kwargs=cb_kwargs)
 
-    def parse_song_page(self, response: Response, song_category: str, band_name: str):
-        dl_links = self.retrieve_all_dl_links(response=response, song_category=song_category, band_name=band_name)
-        if dl_links is not None:
-            if len(dl_links) > 0:
-                for dl_link in dl_links:
-                    self.download_links_count += 1
-                    yield scrapy.Request(dl_link, self.parse_song_download_link, cb_kwargs={'song_category': song_category, 'band_name': band_name})
+    def parse_song_page(self, response: Response, category: str, band_name: str):
+        dl_links = self.get_dl_links_for_song_page(response=response, category=category, band_name=band_name)
+        for dl_link in dl_links:
+            cb_kwargs={'category': category, 'band_name': band_name}
+            yield scrapy.Request(dl_link, self.parse_song_download_link, cb_kwargs=cb_kwargs)
 
-    def parse_song_download_link(self, response: Response, song_category: str, band_name: str):
+    def parse_song_download_link(self, response: Response, category: str, band_name: str):
         content_type = response.headers.get('Content-Type').decode('utf-8')
         if 'ogg' in content_type:
             file_name_url_encoded = re.match(r'^(https://static\.wikia\.nocookie\.net/bandori/images/[^/]+/[^/]+/)([^/]+)', response.url).group(2)
             file_name = urllib.parse.unquote(file_name_url_encoded)
-            for invalid in self.invalid_filename_characters:
-                if invalid in file_name:
-                    valid = urllib.parse.quote(invalid)
-                    self.logger.warning(f'Invalid character {invalid} detected for {file_name}')
-                    self.logger.warning(f'Counterpart is {valid}')
-                    file_name = file_name.replace(invalid, valid)
-            file_path = f'{songs_dir}/{band_name}/{song_category}/{file_name}'
+            file_path = f'{songs_dir}/{clean(band_name)}/{category}/{clean(file_name)}'
             if not os.path.exists(file_path):
                 with open(file_path, 'wb') as music_file:
                     music_file.write(response.body)
                 self.songs_saved += 1
         else:
-            self.logger.warning(f'Unrecognized content type!')
-
-    def get_names_of_categories_of_songs(self, response: Response, all_songs_selector: Selector):
-        song_category_names = all_songs_selector.xpath('div[position()=1]/ul[@class="wds-tabs"]/li/div/a/text()').getall()
-        song_category_names_length = len(song_category_names)
-        expected_song_category_names_length = 5
-        if song_category_names_length != expected_song_category_names_length:
-            self.logger.warning(f'Found {song_category_names_length} instead of {expected_song_category_names_length} categories of songs for {response.url}')
-        return song_category_names
+            self.logger.error(f'Unrecognized content type!')
     
-    def save_band_page(self, response: Response, band_name: str):
-        filename = f"{band_name}.html"
-        filedir = 'band_pages'
-        os.makedirs(filedir, exist_ok=True)
-        pure_path = Path(filedir, filename)
-        pure_path.write_bytes(response.body)
+    def get_song_category_of_category_page(self, response: Response):
+        category: str = response.url.replace('https://bandori.fandom.com/wiki/Category:', '')
+        if category not in song_categories_url_encoded:
+            self.logger.error(f'Unexpected category {category} extracted from category page url at {response.url}')
+            raise ValueError(f'Unexpected category {category} extracted from category page url at {response.url}')
+        return category
+    
+    def get_band_names_of_category_page(self, response: Response, category: str):
+        names = response.xpath('//tbody/tr/td[@class="navbox-group"]/text()').getall()
+        for name in names:
+            if name not in expected_band_names_of_category_page:
+                self.logger.error(f'Unexpected band "{name}" found from {category} category page at {response.url}')
+                raise ValueError(f'Unexpected band "{name}" found from {category} category page at {response.url}')
+        if len(names) > 0:
+            return names
+        else: 
+            self.logger.error(f'Could not find any bands from {category} category page at {response.url}')
+            raise ValueError(f'Could not find any bands from {category} category page at {response.url}')
 
-    def select_groups_of_songs_by_category(self, response: Response, all_songs_selector: Selector):
-        group_of_songs_selectors = all_songs_selector.xpath('div[position()>1]/div/ul')
-        group_of_songs_selectors_length = len(group_of_songs_selectors)
-        expected_group_of_songs_selectors_length = 5 # Original Songs, etc etc
-        if group_of_songs_selectors_length != expected_group_of_songs_selectors_length:
-            self.logger.warning(f'Selected songs from {group_of_songs_selectors_length} instead of {expected_group_of_songs_selectors_length} categories for {response.url}')
-        return group_of_songs_selectors
+    def get_song_links_for_band_of_category_page(self, response: Response, band_name: str, category: str):
+        links = response.xpath(f'//td[text()="{band_name}"]/following-sibling::td[position()=1]/div/a/@href').getall()
+        if len(links) > 0:
+            self.logger.info(f'Parsing {len(links)} {category} song links for {band_name}')
+            self.songs_found += len(links)
+            return links
+        else: 
+            self.logger.error(f'Could not find any songs for {band_name} from {category} category page at {response.url}')
+            raise ValueError(f'Could not find any songs for {band_name} from {category} category page at {response.url}')
 
-    def retrieve_all_dl_links(self, response: Response, song_category: str, band_name: str):
-        dl_links_selector: Selector = response.xpath('//span[@id="Audio"]/parent::h2/following-sibling::table[position()=1]/tbody')
-        if len(dl_links_selector) == 1: # First Selector
-            dl_links = dl_links_selector.xpath('tr[position()>1]/td/center/audio/@src').getall()
-            if len(dl_links) > 0:
+    def get_dl_links_for_song_page(self, response: Response, category: str, band_name: str):
+        xpaths = ['//span[@id="Audio"]/parent::h2/following-sibling::table[position()=1][@class="article-table"]/tbody/tr[position()>1]/td/center/audio/@src',
+                  '//span[@id="Audio"]/parent::h2/following-sibling::div[position()=1][@class="tabber wds-tabber"]/div[position()>1]/table/tbody/tr[position()>1]/td/center/audio/@src',
+                  '//span[@id="Audios"]/parent::h2/following-sibling::div[position()=1][@class="tabber wds-tabber"]/div[position()>1]/table/tbody/tr[position()>1]/td/center/audio/@src',
+                  '//span[@id="Audios"]/parent::h2/following-sibling::table[position()=1]/tbody/tr[position()>1]/td/center/audio/@src']
+        dl_links: list[str] = []
+        for xpath in xpaths:
+            dl_links = response.xpath(xpath).getall()
+            dl_links_length = len(dl_links)
+            if dl_links_length > 0:
+                self.song_dl_count += dl_links_length
                 return dl_links
-            else:
-                self.logger.error(f'An error has occured while retrieving all download links of {song_category}: {response.url} for first selector')
-                return None
-        else: # Second selector
-            dl_links_selector: Selector = response.xpath('//span[@id="Audios"]/parent::h2/following-sibling::div[position()=1][@class="tabber wds-tabber"]')
-            if len(dl_links_selector) == 1:
-                dl_links = dl_links_selector.xpath('div[position()>1]/table/tbody/tr[position()>1]/td/center/audio/@src').getall()
-                if len(dl_links) > 0:
-                    return dl_links
-                else:
-                    self.logger.error(f'An error has occured while retrieving all download links of {song_category}: {response.url} for second selector')
-                    return None
-            else: # Third selector
-                dl_links_selector: Selector = response.xpath('//span[@id="Audios"]/parent::h2/following-sibling::table[position()=1]/tbody')
-                if len(dl_links_selector) == 1:
-                    dl_links = dl_links_selector.xpath('tr[position()>1]/td/center/audio/@src').getall()
-                    if len(dl_links) > 0:
-                        return dl_links
-                    else:
-                        self.logger.error(f'An error has occured while retrieving all download links of {song_category}: {response.url} for third selector')
-                        return None
-                else: # Fourth selector
-                    self.logger.error(f'An error has occured while selecting all download links of {song_category}: {response.url}')
-                    return None
-                    '''
-                    dl_links_selector: Selector = response.xpath('//span[@id="Audios"]/parent::h2/following-sibling::table[position()=1]/tbody')
-                    if len(dl_links_selector) == 1:
-                        links = dl_links_selector.xpath('tr[position()>1]/td/center/audio/@src').getall()
-                        if len(links) > 0:
-                            for link in links:
-                                yield scrapy.Request(link, self.parse_song_download_link)
-                        else:
-                            self.logger.warning(f'An error has occured while retrieving all download links of {song_category}: {response.url} for third selector')  
-                    else:  
-                        self.logger.warning(f'An error has occured while selecting all download links of {song_category}: {response.url}')
-                    '''
+        self.logger.error(f'Unable to get download links from song page {response.url} of {band_name} {category}')
+        return dl_links
     
     def closed(self, reason):
-        self.logger.info(f'Song download links found: {self.download_links_count}')
-        self.logger.info(f'Songs saved: {self.songs_saved}')
+        self.logger.info(f'Songs found: {self.songs_found}')
+        self.logger.info(f'Song download links found: {self.song_dl_count}')
+        self.logger.info(f'Links downloaded from and saved: {self.songs_saved}')

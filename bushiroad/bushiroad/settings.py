@@ -1,3 +1,5 @@
+import logging
+
 # Scrapy settings for bushiroad project
 #
 # For simplicity, this file contains only settings considered important or
@@ -91,3 +93,8 @@ ROBOTSTXT_OBEY = True
 REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
+
+LOG_LEVEL = logging.INFO
+LOG_FILE = 'logs/scrapy.log'
+LOG_FILE_APPEND = False
+LOG_FORMAT = '%(asctime)s - %(filename)s - %(name)s - %(levelname)s - %(message)s'

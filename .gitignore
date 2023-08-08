@@ -5,3 +5,15 @@ Include
 
 # .vscode
 .vscode
+
+# cache
+**/__pycache__
+
+# logs
+**/logs
+
+# pages
+**/band_pages
+
+# songs
+**/songs

@@ -2,6 +2,9 @@
 Scripts
 Lib
 Include
+ffmpeg.exe
+ffplay.exe
+ffprobe.exe
 
 # .vscode
 .vscode

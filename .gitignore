@@ -17,3 +17,9 @@ ffprobe.exe
 
 # songs
 **/songs
+
+# converted songs output
+output
+
+# convert logs
+convert_logs

@@ -1,10 +1,6 @@
-from pathlib import Path
-import logging
 import scrapy
-import datetime
 from scrapy.http import Response
 import os
-from scrapy import Selector
 import re
 import urllib.parse
 

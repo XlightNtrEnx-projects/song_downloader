@@ -15,8 +15,5 @@ ffprobe.exe
 # logs
 **/logs
 
-# pages
-**/band_pages
-
 # songs
 **/songs

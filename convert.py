@@ -14,7 +14,7 @@ handler.setFormatter(formatter)
 # create logger
 logger = logging.getLogger('convert')
 logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 converted = 0
 files_scanned = 0
@@ -31,7 +31,7 @@ for root, d_names, f_names in os.walk(dir_walk):
         new_f_path = os.path.split(f_path)[0].replace(dir_walk, os.path.join('output', 'base_songs_mp3')) + f' {band_name}_{category}' + '.mp3'
         if not os.path.exists(new_f_path):
             os.makedirs(os.path.split(new_f_path)[0], exist_ok=True)
-            logger.debug(f'Converted {f_name} and saved it to {new_f_path}')
+            logger.info(f'Converted {f_name} and saved it to {new_f_path}')
             ogg.export(new_f_path, format='mp3')
             converted += 1
         else:

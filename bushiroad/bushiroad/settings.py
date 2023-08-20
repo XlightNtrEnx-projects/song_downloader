@@ -1,4 +1,5 @@
 import logging
+import datetime
 
 # Scrapy settings for bushiroad project
 #
@@ -95,6 +96,6 @@ TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
 
 LOG_LEVEL = logging.INFO
-LOG_FILE = 'logs/scrapy.log'
-LOG_FILE_APPEND = False
+LOG_FILE = f'logs/download_{datetime.date.today()}.log'
+LOG_FILE_APPEND = True
 LOG_FORMAT = '%(asctime)s - %(filename)s - %(name)s - %(levelname)s - %(message)s'

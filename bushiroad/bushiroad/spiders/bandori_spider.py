@@ -68,6 +68,7 @@ class BandoriSpider(scrapy.Spider):
             with open(file_path, 'wb') as music_file:
                 music_file.write(response.body)
             self.songs_downloaded_and_saved += 1
+            self.logger.info(f'Saved to {file_path}')
         else:
             self.logger.error(f'Unrecognized content type!')
     
